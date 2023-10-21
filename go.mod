@@ -6,6 +6,7 @@ require (
 	github.com/google/btree v1.1.2
 	github.com/sirupsen/logrus v1.8.1
 	github.com/smartystreets/goconvey v1.8.1
+
 )
 
 require (
