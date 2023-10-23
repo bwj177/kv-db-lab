@@ -1,30 +1,39 @@
-package dao
+package storage
 
 import (
+	"errors"
 	"github.com/sirupsen/logrus"
+	"io"
 	"kv-db-lab/constant"
 	"kv-db-lab/index"
 	"kv-db-lab/model"
+	"kv-db-lab/pkg"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
-// DB 存储引擎实例
-type DB struct {
+// Engine 存储引擎实例
+type Engine struct {
 	option     *model.Options
 	lock       *sync.RWMutex
 	activeFile *model.DataFile
 	oldFile    map[uint]*model.DataFile
 	index      index.Indexer
+
+	fileIds []int // 仅用于加载索引
 }
 
 // Put
 //
 //	@Description: 将数据写入文件
-//	@receiver d
+//	@receiver db
 //	@param key
 //	@param value
 //	@return error
-func (d *DB) Put(key []byte, value []byte) error {
+func (db *Engine) Put(key []byte, value []byte) error {
 	// 参数校验
 	if len(key) == 0 {
 		return constant.ErrEmptyParam
@@ -38,14 +47,14 @@ func (d *DB) Put(key []byte, value []byte) error {
 	}
 
 	// 追加写入活跃文件中
-	pos, err := d.appendLogRecord(logRecord)
+	pos, err := db.appendLogRecord(logRecord)
 	if err != nil {
 		logrus.Error("数据追加写入失败，err:", err.Error())
 		return err
 	}
 
 	// 更新内存索引
-	if ok := d.index.Put(key, pos); !ok {
+	if ok := db.index.Put(key, pos); !ok {
 		logrus.Error("update index failed,err")
 		return constant.ErrUpdateIndex
 	}
@@ -53,7 +62,7 @@ func (d *DB) Put(key []byte, value []byte) error {
 	return nil
 }
 
-func (db *DB) Get(key []byte) ([]byte, error) {
+func (db *Engine) Get(key []byte) ([]byte, error) {
 	// 参数校验
 	if len(key) == 0 {
 		return nil, constant.ErrEmptyParam
@@ -83,7 +92,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	}
 
 	// 根据偏移量去读取数据
-	logRecord, err := dataFile.ReadLogRecordByOffset(dataFile.FilePos.Offset)
+	logRecord, _, err := dataFile.ReadLogRecordByOffset(dataFile.FilePos.Offset)
 	if err != nil {
 		logrus.Error("根据偏移量读取数据失败，err:", err.Error())
 		return nil, err
@@ -104,7 +113,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 //	@param logRecord  // 写入数据
 //	@return *model.LogRecordPos  // 写入后返回该数据的索引信息
 //	@return error
-func (db *DB) appendLogRecord(logRecord *model.LogRecord) (*model.LogRecordPos, error) {
+func (db *Engine) appendLogRecord(logRecord *model.LogRecord) (*model.LogRecordPos, error) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
@@ -159,7 +168,7 @@ func (db *DB) appendLogRecord(logRecord *model.LogRecord) (*model.LogRecordPos, 
 	// 构造内存索引信息
 	pos := &model.LogRecordPos{
 		FileID: db.activeFile.FilePos.FileID,
-		Offset: int64(writeOffset),
+		Offset: writeOffset,
 	}
 	return pos, nil
 }
@@ -169,7 +178,7 @@ func (db *DB) appendLogRecord(logRecord *model.LogRecord) (*model.LogRecordPos, 
 //	@Description: 设置当前活跃文件(该共享数据结构的修改非线程安全，加锁访问）
 //	@receiver db
 //	@return error
-func (db *DB) setActiveFile() error {
+func (db *Engine) setActiveFile() error {
 	var initialFileId uint32
 	if db.activeFile != nil {
 		initialFileId = uint32(db.activeFile.FilePos.FileID + 1)
@@ -184,4 +193,130 @@ func (db *DB) setActiveFile() error {
 
 	db.activeFile = dataFile
 	return nil
+}
+
+// 从磁盘中加载数据文件
+func (db *Engine) loadDateFile() error {
+	dirEnties, err := os.ReadDir(db.option.DirPath)
+	if err != nil {
+		return err
+	}
+
+	var fileIds []int
+	// fileName ex:001.data 002.data 001 to fileIds
+	// 遍历文件找到符合数据文件的后缀
+	for _, dirEntry := range dirEnties {
+		if strings.HasSuffix(dirEntry.Name(), constant.DataFileSuffix) {
+			prefix := strings.Split(dirEntry.Name(), ".")[0]
+			fileID, err := strconv.Atoi(prefix)
+			if err != nil {
+				return errors.New("文件前缀非数字")
+			}
+			fileIds = append(fileIds, fileID)
+		}
+	}
+
+	// 将文件ID进行排序
+	sort.Ints(fileIds)
+	db.fileIds = fileIds
+
+	// 打开文件并加载到引擎的数据文件中
+	for i, fileId := range fileIds {
+		dataFile, err := model.OpenDataFile(db.option.DirPath, uint32(fileId))
+		if err != nil {
+			return err
+		}
+		// 默认让最大id的文件作为activeFile
+		if i == len(fileIds)-1 {
+			db.activeFile = dataFile
+		} else {
+			db.oldFile[uint(fileId)] = dataFile
+		}
+	}
+	return nil
+}
+
+// 从数据文件中加载索引
+// 遍历所有数据记录并将key,fileId,offset记录到索引中
+func (db *Engine) loadIndexFromDateFiles() error {
+	// 无文件加载
+	if len(db.fileIds) == 0 {
+		return nil
+	}
+
+	for i, fileID := range db.fileIds {
+		fid := uint(fileID)
+		var dateFile *model.DataFile
+		if fid == db.activeFile.FilePos.FileID {
+			dateFile = db.activeFile
+		} else {
+			dateFile = db.oldFile[fid]
+		}
+
+		//循环读取file中数据
+		var offset int64 = 0
+		for {
+			logRecord, size, err := dateFile.ReadLogRecordByOffset(offset)
+			if err == io.EOF { // 已读完
+				break
+			}
+			if err != nil {
+				return err
+			}
+			// 拿到数据记录将其构造出内存索引存入内存存储中
+			logRecordPos := model.LogRecordPos{
+				FileID: fid,
+				Offset: offset,
+			}
+			// 如果记录为已删除状态
+			if logRecord.Status == constant.LogRecordDelete {
+				db.index.Delete(logRecord.Key)
+			} else {
+				db.index.Put(logRecord.Key, &logRecordPos)
+			}
+
+			offset += size
+		}
+		// 如果加载的是当前活跃文件，那么更新文件的writeOff
+		if i == len(db.fileIds)-1 {
+			db.activeFile.FilePos.Offset = int64(i)
+		}
+	}
+	return nil
+}
+
+func OpenWithOptions(options *model.Options) (*Engine, error) {
+	// 校验传入的配置项
+	if err := pkg.CheckOptions(options); err != nil {
+		logrus.Error("db:open failed,err:", err.Error())
+		return nil, err
+	}
+
+	// 判断数据目录是否存在，如果不存在则创建这个目录
+	if _, err := os.Stat(options.DirPath); os.IsNotExist(err) {
+		// 不存在，自行创建目录
+		if err := os.Mkdir(options.DirPath, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	// 初始化engine结构体
+	db := &Engine{
+		option:  options,
+		lock:    &sync.RWMutex{},
+		oldFile: make(map[uint]*model.DataFile),
+		index:   index.NewIndexer(options.Index),
+	}
+
+	// 加载数据文件
+	if err := db.loadDateFile(); err != nil {
+		logrus.Error("初始化时加载数据文件失败")
+		return nil, err
+	}
+
+	// 从数据文件中加载索引
+	if err := db.loadIndexFromDateFiles(); err != nil {
+		return nil, err
+	}
+	return db, nil
 }

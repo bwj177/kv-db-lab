@@ -3,6 +3,7 @@ package index
 import (
 	"bytes"
 	"github.com/google/btree"
+	"kv-db-lab/constant"
 	"kv-db-lab/model"
 )
 
@@ -12,6 +13,17 @@ type Indexer interface {
 	Put(key []byte, pos *model.LogRecordPos) bool
 	Get(key []byte) *model.LogRecordPos
 	Delete(key []byte) bool
+}
+
+func NewIndexer(tp model.IndexType) Indexer {
+	switch tp {
+	case model.Btree:
+		// 使用该方式则使用默认节点数
+		return NewBTree(constant.DefaultDegree)
+	default:
+		return nil
+	}
+
 }
 
 // Item 实现google-btree中item接口

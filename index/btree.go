@@ -2,6 +2,7 @@ package index
 
 import (
 	"github.com/google/btree"
+	"kv-db-lab/constant"
 	"kv-db-lab/model"
 	"sync"
 )
@@ -55,6 +56,11 @@ func (B BTree) Delete(key []byte) bool {
 //	@param degree : b树叶子节点数量
 //	@return *BTree
 func NewBTree(degree int) *BTree {
+	// 若传入degree不合法则则使用默认值
+	if degree <= 0 {
+		degree = constant.DefaultDegree
+	}
+
 	return &BTree{
 		tree: btree.New(degree),
 		lock: &sync.RWMutex{},

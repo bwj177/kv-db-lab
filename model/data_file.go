@@ -19,6 +19,6 @@ func (df *DataFile) Write(b []byte) error {
 	return nil
 }
 
-func (df *DataFile) ReadLogRecordByOffset(offset int64) (*LogRecord, error) {
-	return nil, nil
+func (df *DataFile) ReadLogRecordByOffset(offset int64) (*LogRecord, int64, error) {
+	return nil, 0, nil
 }
