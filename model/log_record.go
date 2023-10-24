@@ -1,6 +1,10 @@
 package model
 
-import "kv-db-lab/constant"
+import (
+	"encoding/binary"
+	"hash/crc32"
+	"kv-db-lab/constant"
+)
 
 // LogRecordPos 描述数据在磁盘中位置
 type LogRecordPos struct {
@@ -26,16 +30,78 @@ type LogRecordHeader struct {
 	valueSize  uint32
 }
 
-// EncodeLogRecord 对LogRecord进行编码byte字节
+// EncodeLogRecord 对LogRecord进行编码
+/*
+crc校验值 | type类型 | keySize | valueSize | key | value
+  4          1          var       var       var   var    (byte)
+*/
 func EncodeLogRecord(logRecord *LogRecord) ([]byte, int64) {
-	return nil, 0
+	key := logRecord.Key
+	value := logRecord.Value
+	status := logRecord.Status
+
+	// 先申请record可能的最大字节数
+	header := make([]byte, constant.MaxLogRecordHeaderSize)
+
+	// type已知，优先存储
+	index := 4
+	header[index] = byte(status)
+	index += 1
+
+	// 向[]byte依次写入可变长的字段,此方法返回写入数据长度-> index
+	index += binary.PutVarint(header[index:], int64(len(key)))
+	index += binary.PutVarint(header[index:], int64(len(value)))
+
+	// size: 需要编码的header的总长度
+	size := index + len(key) + len(value)
+
+	encBytes := make([]byte, size)
+	// 将header部分内容拷入encBytes
+	copy(encBytes, header[:index])
+
+	// 将kv拷入
+	copy(encBytes[index:], key)
+	copy(encBytes[index+len(key):], value)
+
+	// crc校验码生产
+	crc := crc32.ChecksumIEEE(encBytes[4:])
+	// 小端序插入crc的值 -> crcBytes
+	binary.LittleEndian.PutUint32(encBytes[:4], crc)
+
+	return encBytes, int64(size)
 }
 
 // 对字节数组中header信息进行解码
 func decodeLogRecordHeader(buf []byte) (*LogRecordHeader, int64) {
-	return nil, 0
+	if len(buf) < 4 {
+		return nil, 0
+	}
+
+	logRecordHeader := new(LogRecordHeader)
+	logRecordHeader.crc = binary.LittleEndian.Uint32(buf[:4])
+	logRecordHeader.recordType = constant.LogRecordStatus(buf[4])
+
+	// 通过binary包中api将可变长的数据读出
+	index := 5
+	keySize, n := binary.Varint(buf[index:])
+	index += n
+	valueSize, n := binary.Varint(buf[index:])
+	index += n
+
+	logRecordHeader.keySize = uint32(keySize)
+	logRecordHeader.valueSize = uint32(valueSize)
+
+	return logRecordHeader, int64(index)
 }
 
-func getLogRecordCRC(record LogRecord, buf []byte) uint32 {
-	return 0
+func getLogRecordCRC(record *LogRecord, header []byte) uint32 {
+	if record == nil {
+		return 0
+	}
+
+	crc := crc32.ChecksumIEEE(header)
+	crc = crc32.Update(crc, crc32.IEEETable, record.Key)
+	crc = crc32.Update(crc, crc32.IEEETable, record.Value)
+
+	return crc
 }

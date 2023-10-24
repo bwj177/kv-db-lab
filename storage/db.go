@@ -92,7 +92,7 @@ func (db *Engine) Get(key []byte) ([]byte, error) {
 	}
 
 	// 根据偏移量去读取数据
-	logRecord, _, err := dataFile.ReadLogRecordByOffset(dataFile.FilePos.Offset)
+	logRecord, _, err := dataFile.ReadLogRecordByOffset(logRecordPos.Offset)
 	if err != nil {
 		logrus.Error("根据偏移量读取数据失败，err:", err.Error())
 		return nil, err

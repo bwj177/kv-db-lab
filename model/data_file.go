@@ -85,7 +85,7 @@ func (df *DataFile) ReadLogRecordByOffset(offset int64) (*LogRecord, int64, erro
 	value := recordByte[keySize:]
 
 	// 拼接数据格式返回
-	logRecord := LogRecord{
+	logRecord := &LogRecord{
 		Key:    key,
 		Value:  value,
 		Status: header.recordType,
@@ -98,7 +98,7 @@ func (df *DataFile) ReadLogRecordByOffset(offset int64) (*LogRecord, int64, erro
 		return nil, 0, constant.ErrInvalidCRC
 	}
 
-	return &logRecord, headerSize + keySize + valueSize, nil
+	return logRecord, headerSize + keySize + valueSize, nil
 }
 
 // read_N_Bytes
