@@ -155,7 +155,6 @@ func (db *Engine) appendLogRecord(logRecord *model.LogRecord) (*model.LogRecordP
 		logrus.Error("activeFile：数据写入失败,err:", err.Error())
 		return nil, err
 	}
-	db.activeFile.FilePos.Offset += size //更新活跃文件写入偏移
 
 	// 根据用户配置决定是否需要持久化
 	if db.option.SyncWrites {
@@ -171,6 +170,38 @@ func (db *Engine) appendLogRecord(logRecord *model.LogRecord) (*model.LogRecordP
 		Offset: writeOffset,
 	}
 	return pos, nil
+}
+
+func (db *Engine) Delete(key []byte) error {
+	// 校验入参
+	if len(key) == 0 {
+		return constant.ErrEmptyParam
+	}
+
+	// 检验key是否在Btree索引中是否存在，若不存在则没有继续的必要
+	recordPos := db.index.Get(key)
+	if recordPos == nil {
+		return nil
+	}
+
+	// 后续步骤与put一致,写入状态为delete的数据信息
+	logRecord := &model.LogRecord{
+		Key:    key,
+		Value:  nil,
+		Status: constant.LogRecordDelete,
+	}
+	_, err := db.appendLogRecord(logRecord)
+	if err != nil {
+		return err
+	}
+
+	// 删除索引文件
+	ok := db.index.Delete(key)
+	if !ok {
+		return errors.New("删除索引失败")
+	}
+
+	return nil
 }
 
 // setActiveFile
@@ -218,6 +249,8 @@ func (db *Engine) loadDateFile() error {
 
 	// 将文件ID进行排序
 	sort.Ints(fileIds)
+
+	// 维护有序的fileIds便于后续加载索引信息->BTree
 	db.fileIds = fileIds
 
 	// 打开文件并加载到引擎的数据文件中
@@ -285,6 +318,12 @@ func (db *Engine) loadIndexFromDateFiles() error {
 	return nil
 }
 
+// OpenWithOptions
+//
+//	@Description: engine启动入口，用户需传入自己需要的配置项，加载datafile，索引信息，再返回engine使用
+//	@param options
+//	@return *Engine
+//	@return error
 func OpenWithOptions(options *model.Options) (*Engine, error) {
 	// 校验传入的配置项
 	if err := pkg.CheckOptions(options); err != nil {

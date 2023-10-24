@@ -12,4 +12,11 @@ type IOManager interface {
 	Sync() error
 
 	Close() error
+
+	// Size 获取到文件大小
+	Size() (int64, error)
+}
+
+func NewIOManager(filePath string) (IOManager, error) {
+	return NewFileIO(filePath)
 }

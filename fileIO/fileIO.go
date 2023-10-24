@@ -37,8 +37,15 @@ func (f fileIO) Close() error {
 	return f.fd.Close()
 }
 
+func (f fileIO) Size() (int64, error) {
+	stat, err := f.fd.Stat()
+	if err != nil {
+		return 0, err
+	}
+	return stat.Size(), nil
+}
 func NewFileIO(fileName string) (*fileIO, error) {
-	fd, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0514)
+	fd, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
