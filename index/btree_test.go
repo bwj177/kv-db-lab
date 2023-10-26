@@ -2,6 +2,7 @@ package index
 
 import (
 	c "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
 	"kv-db-lab/model"
 	"testing"
 )
@@ -88,4 +89,41 @@ func TestBTree_Put(t *testing.T) {
 			})
 		}
 	})
+
+}
+
+func TestBTree_Iterator(t *testing.T) {
+	btree := NewBTree(32)
+
+	// 若btree中无数据
+	iterator := btree.Iterator(true)
+	assert.Equal(t, false, iterator.Valid())
+
+	// btree有数据
+	btree.Put([]byte("key1"), &model.LogRecordPos{
+		FileID: 1,
+		Offset: 2,
+	})
+
+	btree.Put([]byte("key2"), &model.LogRecordPos{
+		FileID: 2,
+		Offset: 3,
+	})
+
+	iterator = btree.Iterator(false)
+	assert.Equal(t, true, iterator.Valid())
+	assert.Equal(t, ("key1"), string(iterator.Key()))
+
+	// next()
+	iterator.Next()
+	assert.Equal(t, ("key2"), string(iterator.Key()))
+
+	// rewind()
+	iterator.Rewind()
+	assert.Equal(t, ("key1"), string(iterator.Key()))
+
+	//close()
+	iterator.Close()
+	iterator.Rewind()
+	assert.Equal(t, false, iterator.Valid())
 }

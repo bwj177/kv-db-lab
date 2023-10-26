@@ -106,6 +106,40 @@ func (db *Engine) Get(key []byte) ([]byte, error) {
 	return logRecord.Value, nil
 }
 
+func (db *Engine) GetByRecordPos(logRecordPos *model.LogRecordPos) ([]byte, error) {
+	//索引信息不存在
+	if logRecordPos == nil {
+		return nil, constant.ErrNotExist
+	}
+
+	// 根据文件ID找到对应数据文件  可能在活跃文件也可能在old文件
+	var dataFile *model.DataFile
+	if db.activeFile.FilePos.FileID == logRecordPos.FileID {
+		dataFile = db.activeFile
+	} else {
+		dataFile = db.oldFile[logRecordPos.FileID]
+	}
+
+	// 未找到该文件
+	if dataFile == nil {
+		return nil, constant.ErrNotExist
+	}
+
+	// 根据偏移量去读取数据
+	logRecord, _, err := dataFile.ReadLogRecordByOffset(logRecordPos.Offset)
+	if err != nil {
+		logrus.Error("根据偏移量读取数据失败，err:", err.Error())
+		return nil, err
+	}
+
+	if logRecord.Status == constant.LogRecordDelete {
+		logrus.Info("根据偏移量读取数据的状态是已删除")
+		return nil, constant.ErrNotExist
+	}
+
+	return logRecord.Value, nil
+}
+
 // appendLogRecord
 //
 //	@Description: 追加写入数据到活跃文件中
@@ -358,4 +392,90 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+func (db *Engine) NewIterate(opts *model.IteratorOptions) *Iterate {
+	indexIter := db.index.Iterator(opts.Reverse)
+
+	return &Iterate{
+		indexIter: indexIter,
+		engine:    db,
+		options:   opts,
+	}
+}
+
+// GetAllKeys : 获取数据库中所有key
+func (db *Engine) GetAllKeys() [][]byte {
+	iterator := db.index.Iterator(false)
+	keys := make([][]byte, db.index.Size())
+	idx := 0
+
+	for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+		keys[idx] = iterator.Key()
+		idx += 1
+	}
+	return keys
+}
+
+// Fold
+//
+//	@Description: 获取数据库所有key，value对并执行指定fn逻辑
+//	@receiver db
+//	@param fn
+//	@return error
+func (db *Engine) Fold(fn func(key []byte, value []byte) bool) error {
+	iter := db.index.Iterator(false)
+
+	//从文件中读加读锁
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	// 使用迭代器获得pos->value
+	for iter.Rewind(); iter.Valid(); iter.Next() {
+		value, err := db.GetByRecordPos(iter.Value())
+		if err != nil {
+			return err
+		}
+		ok := fn(iter.Key(), value)
+		if !ok {
+			break
+		}
+	}
+	return nil
+}
+
+// Close 关闭Engine，将文件中数据进行持久化
+func (db *Engine) Close() error {
+	if db.activeFile == nil {
+		return nil
+	}
+
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	// 关闭当前活跃文件
+	if err := db.activeFile.Close(); err != nil {
+		return err
+	}
+
+	// 关闭旧的活跃文件
+	for _, file := range db.oldFile {
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Sync 将DB当前活跃数据持久化
+func (db *Engine) Sync() error {
+	if db.activeFile == nil {
+		return nil
+	}
+
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	return db.activeFile.Sync()
 }

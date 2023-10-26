@@ -18,3 +18,27 @@ const (
 	// ................
 
 )
+
+// IteratorOptions
+//
+//	IteratorOptions
+//	@Description: 迭代器配置项
+type IteratorOptions struct {
+	// 指定索引迭代
+	Prefix []byte
+
+	// 顺序
+	Reverse bool
+}
+
+var DefaultOptions = &Options{
+	DirPath:      "./../test_file",
+	DataFileSize: 1024 * 1024,
+	SyncWrites:   true,
+	Index:        0,
+}
+
+var DefaultIteratorOptions = &IteratorOptions{
+	Prefix:  nil,
+	Reverse: false,
+}

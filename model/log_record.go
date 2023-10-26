@@ -65,9 +65,9 @@ func EncodeLogRecord(logRecord *LogRecord) ([]byte, int64) {
 
 	// crc校验码生产
 	crc := crc32.ChecksumIEEE(encBytes[4:])
+
 	// 小端序插入crc的值 -> crcBytes
 	binary.LittleEndian.PutUint32(encBytes[:4], crc)
-
 	return encBytes, int64(size)
 }
 
@@ -99,7 +99,7 @@ func getLogRecordCRC(record *LogRecord, header []byte) uint32 {
 		return 0
 	}
 
-	crc := crc32.ChecksumIEEE(header)
+	crc := crc32.ChecksumIEEE(header[4:])
 	crc = crc32.Update(crc, crc32.IEEETable, record.Key)
 	crc = crc32.Update(crc, crc32.IEEETable, record.Value)
 

@@ -13,6 +13,11 @@ type Indexer interface {
 	Put(key []byte, pos *model.LogRecordPos) bool
 	Get(key []byte) *model.LogRecordPos
 	Delete(key []byte) bool
+
+	Iterator(reverse bool) Iterator
+
+	// Size 返回Btree存储数据数量
+	Size() int
 }
 
 func NewIndexer(tp model.IndexType) Indexer {
@@ -35,4 +40,29 @@ type Item struct {
 // Less 排序比较规则定义
 func (i Item) Less(than btree.Item) bool {
 	return bytes.Compare(i.key, than.(Item).key) == -1
+}
+
+// Iterator
+// @Description: 索引迭代器接口
+type Iterator interface {
+	// Rewind rewind 重新回到迭代器的起点
+	Rewind()
+
+	// Seek 根据传入key找到第一个大于等于key的目标key，从此key开始遍历
+	Seek(key []byte)
+
+	// Next 迭代到下一个key
+	Next()
+
+	// Valid 是否已经遍历完了所以key
+	Valid() bool
+
+	// Key 当前遍历位置的key数据
+	Key() []byte
+
+	// Value 当前遍历位置的Value数据
+	Value() *model.LogRecordPos
+
+	// Close 关闭迭代器
+	Close()
 }
