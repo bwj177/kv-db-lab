@@ -34,6 +34,46 @@ func OpenDataFile(path string, fileId uint32) (*DataFile, error) {
 	return dataFile, nil
 }
 
+func OpenHintFile(dirPath string) (*DataFile, error) {
+	fileName := filepath.Join(dirPath, constant.HintFileName)
+
+	// 初始化fileIO
+	ioManager, err := fileIO.NewIOManager(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	dataFile := &DataFile{
+		FilePos: &LogRecordPos{
+			FileID: 0,
+			Offset: 0,
+		},
+		IOManager: ioManager,
+	}
+
+	return dataFile, nil
+}
+
+func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
+	fileName := filepath.Join(dirPath, constant.MergeFinishedName)
+
+	// 初始化fileIO
+	ioManager, err := fileIO.NewIOManager(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	dataFile := &DataFile{
+		FilePos: &LogRecordPos{
+			FileID: 0,
+			Offset: 0,
+		},
+		IOManager: ioManager,
+	}
+
+	return dataFile, nil
+}
+
 func (df *DataFile) Write(b []byte) error {
 	n, err := df.IOManager.Write(b)
 
@@ -127,4 +167,20 @@ func (df *DataFile) Sync() error {
 
 func (df *DataFile) Close() error {
 	return df.IOManager.Sync()
+}
+
+// WriteHintRecord 写入索引信息到Hint文件中
+func (df *DataFile) WriteHintRecord(key []byte, recordPos *LogRecordPos) error {
+	logRecord := &LogRecord{
+		Key:   key,
+		Value: EncodeLogRecordPos(recordPos),
+	}
+
+	encByte, _ := EncodeLogRecord(logRecord)
+	err := df.Write(encByte)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

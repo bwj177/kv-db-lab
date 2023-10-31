@@ -23,3 +23,15 @@ const MaxLogRecordHeaderSize int64 = 4 + 1 + binary.MaxVarintLen32 + binary.MaxV
 var TxFinKey = []byte("finishedTx")
 
 const NoneTransactionID = 0
+
+// MergeSuffix 用于merge文件的命名后缀
+const MergeSuffix = "-merge"
+
+// HintFileName 用于hint文件的命名
+const HintFileName = "hint-index"
+
+// MergeFinishedName 用于标识merge成功文件的文件命名
+const MergeFinishedName = "merge-finished"
+
+// MergeFinishedKey 用于 命名merge成功文件标识写入的key
+const MergeFinishedKey = "MERGE.FINISHED"

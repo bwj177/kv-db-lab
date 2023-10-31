@@ -10,6 +10,7 @@ import (
 	"kv-db-lab/model"
 	"kv-db-lab/pkg"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ type Engine struct {
 	fileIds []int // 仅用于加载索引
 
 	transID uint64 // 全局事务ID
+
+	isMerging bool // 标识当前引擎是否正在进行merge数据
 }
 
 // Put
@@ -321,6 +324,19 @@ func (db *Engine) loadIndexFromDateFiles() error {
 		return nil
 	}
 
+	// 跳过进行过merge的文件加载索引
+	hasMerge, nonMergeFiledID := false, uint32(0)
+	filePath := path.Join(db.option.DirPath, constant.MergeFinishedName)
+
+	// 若存在记录merge完成的文件,拿到最小未进行merge的ID，在扫描中，小于此ID无需重复进行索引构建
+	if _, err := os.Stat(filePath); err == nil {
+		nonMergeFiledID, err = db.getNonMergeFileID(db.option.DirPath)
+		if err != nil {
+			return err
+		}
+		hasMerge = true
+	}
+
 	// 暂存带事务ID的批写入数据，先校验是否合规，再进行写入内存索引
 	transRecord := make(map[uint64][]*model.TransRecord)
 
@@ -329,6 +345,12 @@ func (db *Engine) loadIndexFromDateFiles() error {
 
 	for i, fileID := range db.fileIds {
 		fid := uint(fileID)
+
+		// 判断是否merge成功、成功如果该文件的ID小于最小未merge的文件ID，则跳过
+		if hasMerge && uint32(fileID) < nonMergeFiledID {
+			continue
+		}
+
 		var dateFile *model.DataFile
 		if fid == db.activeFile.FilePos.FileID {
 			dateFile = db.activeFile
@@ -452,9 +474,19 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 		index:   index.NewIndexer(options.Index),
 	}
 
+	// 加载数据目录
+	if err := db.loadMergeFile(); err != nil {
+		return nil, err
+	}
+
 	// 加载数据文件
 	if err := db.loadDateFile(); err != nil {
 		logrus.Error("初始化时加载数据文件失败")
+		return nil, err
+	}
+
+	// 从hint索引文件加载索引
+	if err := db.loadIndexFromHintFile(); err != nil {
 		return nil, err
 	}
 
@@ -462,6 +494,7 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 	if err := db.loadIndexFromDateFiles(); err != nil {
 		return nil, err
 	}
+
 	return db, nil
 }
 
