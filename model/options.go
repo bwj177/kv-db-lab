@@ -21,7 +21,6 @@ const (
 
 // IteratorOptions
 //
-//	IteratorOptions
 //	@Description: 迭代器配置项
 type IteratorOptions struct {
 	// 指定索引迭代
@@ -29,6 +28,17 @@ type IteratorOptions struct {
 
 	// 顺序
 	Reverse bool
+}
+
+// WriteBatchOptions
+//
+//	@Description: 批量写入配置项
+type WriteBatchOptions struct {
+	// 是否自动持久化数据到磁盘
+	SyncWrite bool
+
+	// 一个批次的最大写入量
+	MaxBatchSize uint
 }
 
 var DefaultOptions = &Options{
@@ -41,4 +51,9 @@ var DefaultOptions = &Options{
 var DefaultIteratorOptions = &IteratorOptions{
 	Prefix:  nil,
 	Reverse: false,
+}
+
+var DefaultWriteBatchOptions = &WriteBatchOptions{
+	SyncWrite:    true,
+	MaxBatchSize: 1000,
 }

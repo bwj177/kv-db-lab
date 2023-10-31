@@ -22,6 +22,12 @@ type LogRecord struct {
 	Status constant.LogRecordStatus
 }
 
+// 事务Record数据
+type TransRecord struct {
+	LogRecord *LogRecord
+	Pos       *LogRecordPos
+}
+
 // LogRecordHeader 数据记录头信息
 type LogRecordHeader struct {
 	crc        uint32                   // crc校验值

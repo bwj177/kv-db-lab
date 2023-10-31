@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"errors"
 	"github.com/sirupsen/logrus"
 	"io"
@@ -24,6 +25,8 @@ type Engine struct {
 	index      index.Indexer
 
 	fileIds []int // 仅用于加载索引
+
+	transID uint64 // 全局事务ID
 }
 
 // Put
@@ -39,9 +42,12 @@ func (db *Engine) Put(key []byte, value []byte) error {
 		return constant.ErrEmptyParam
 	}
 
+	// 给key加入一个特殊值transID，与批写入数据做区分
+	keyTransID := pkg.LogRecordKeySeq(key, constant.NoneTransactionID)
+
 	// 构造要存入数据的格式
 	logRecord := &model.LogRecord{
-		Key:    key,
+		Key:    keyTransID,
 		Value:  value,
 		Status: constant.LogRecordNormal,
 	}
@@ -219,8 +225,12 @@ func (db *Engine) Delete(key []byte) error {
 	}
 
 	// 后续步骤与put一致,写入状态为delete的数据信息
+
+	// 给key加入一个特殊值transID，与批写入数据做区分
+	keyTransID := pkg.LogRecordKeySeq(key, constant.NoneTransactionID)
+
 	logRecord := &model.LogRecord{
-		Key:    key,
+		Key:    keyTransID,
 		Value:  nil,
 		Status: constant.LogRecordDelete,
 	}
@@ -311,6 +321,12 @@ func (db *Engine) loadIndexFromDateFiles() error {
 		return nil
 	}
 
+	// 暂存带事务ID的批写入数据，先校验是否合规，再进行写入内存索引
+	transRecord := make(map[uint64][]*model.TransRecord)
+
+	// 维护一个全局的事务ID，当load完索引拿到一个最新（大）的ID去赋值给transID
+	var currTransID uint64 = 0
+
 	for i, fileID := range db.fileIds {
 		fid := uint(fileID)
 		var dateFile *model.DataFile
@@ -330,24 +346,79 @@ func (db *Engine) loadIndexFromDateFiles() error {
 			if err != nil {
 				return err
 			}
+
 			// 拿到数据记录将其构造出内存索引存入内存存储中
-			logRecordPos := model.LogRecordPos{
+			logRecordPos := &model.LogRecordPos{
 				FileID: fid,
 				Offset: offset,
 			}
-			// 如果记录为已删除状态
-			if logRecord.Status == constant.LogRecordDelete {
-				db.index.Delete(logRecord.Key)
-			} else {
-				db.index.Put(logRecord.Key, &logRecordPos)
+
+			// 解析 key拿到事务ID与realKey
+			realKey, transID := pkg.PraseKey(logRecord.Key)
+
+			// 非事务数据
+			if transID == constant.NoneTransactionID {
+				err := db.updateIndex(logRecord.Key, logRecord.Status, logRecordPos)
+				if err != nil {
+					return err
+				}
 			}
 
+			// 若数据为事务数据
+			if transID != constant.NoneTransactionID {
+				// 若为插入的事务完成的标识数据，则对应transID数据都为有效
+				if bytes.Compare(realKey, constant.TxFinKey) == 0 {
+					// 遍历先前暂存的数据，若事务ID符合就更新索引
+					for _, record := range transRecord[transID] {
+						err = db.updateIndex(record.LogRecord.Key, record.LogRecord.Status, record.Pos)
+						if err != nil {
+							return err
+						}
+					}
+					// 更新完释放内存
+					delete(transRecord, transID)
+				}
+
+				// 若插入数据不为txFinKey
+				logRecord.Key = realKey
+
+				// 构建要暂存的数据
+				tmpRecord := &model.TransRecord{
+					LogRecord: logRecord,
+					Pos:       logRecordPos,
+				}
+				transRecord[transID] = append(transRecord[transID], tmpRecord)
+			}
+
+			// 更新全局事务ID
+			if transID > currTransID {
+				currTransID = transID
+			}
+
+			// 更新下次迭代读取偏移量
 			offset += size
 		}
+
 		// 如果加载的是当前活跃文件，那么更新文件的writeOff
 		if i == len(db.fileIds)-1 {
-			db.activeFile.FilePos.Offset = int64(i)
+			db.activeFile.FilePos.Offset = offset
 		}
+	}
+
+	db.transID = currTransID
+	return nil
+}
+
+func (db *Engine) updateIndex(key []byte, status constant.LogRecordStatus, pos *model.LogRecordPos) error {
+	var ok bool
+	// 如果记录为已删除状态
+	if status == constant.LogRecordDelete {
+		ok = db.index.Delete(key)
+	} else {
+		ok = db.index.Put(key, pos)
+	}
+	if !ok {
+		return constant.ErrUpdateIndex
 	}
 	return nil
 }
@@ -394,6 +465,7 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 	return db, nil
 }
 
+// NewIterate 初始化自定义迭代器
 func (db *Engine) NewIterate(opts *model.IteratorOptions) *Iterate {
 	indexIter := db.index.Iterator(opts.Reverse)
 
@@ -401,6 +473,15 @@ func (db *Engine) NewIterate(opts *model.IteratorOptions) *Iterate {
 		indexIter: indexIter,
 		engine:    db,
 		options:   opts,
+	}
+}
+
+func (db *Engine) NewWriteBatch(opts *model.WriteBatchOptions) *WriteBatch {
+	return &WriteBatch{
+		lock:          new(sync.RWMutex),
+		engine:        db,
+		pendingWrites: make(map[string]*model.LogRecord),
+		options:       opts,
 	}
 }
 

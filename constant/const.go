@@ -19,3 +19,7 @@ var DataFileSuffix string = ".data"
 
 // MaxLogRecordHeaderSize size = crc + type + keySize +valueSize
 const MaxLogRecordHeaderSize int64 = 4 + 1 + binary.MaxVarintLen32 + binary.MaxVarintLen32
+
+var TxFinKey = []byte("finishedTx")
+
+const NoneTransactionID = 0
