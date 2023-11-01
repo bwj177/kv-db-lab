@@ -61,6 +61,10 @@ func (r *RadixTree) Size() int {
 	return r.tree.Size()
 }
 
+func (r *RadixTree) Close() error {
+	return nil
+}
+
 //================RadixIterator=================================================
 
 // RadixIterator

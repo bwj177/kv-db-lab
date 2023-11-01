@@ -54,6 +54,26 @@ func OpenHintFile(dirPath string) (*DataFile, error) {
 	return dataFile, nil
 }
 
+func OpenTxIDFile(dirPath string) (*DataFile, error) {
+	fileName := filepath.Join(dirPath, constant.NowTxIDFileName)
+
+	// 初始化fileIO
+	ioManager, err := fileIO.NewIOManager(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	dataFile := &DataFile{
+		FilePos: &LogRecordPos{
+			FileID: 0,
+			Offset: 0,
+		},
+		IOManager: ioManager,
+	}
+
+	return dataFile, nil
+}
+
 func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, constant.MergeFinishedName)
 

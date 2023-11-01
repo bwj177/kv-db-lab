@@ -18,15 +18,20 @@ type Indexer interface {
 
 	// Size 返回Btree存储数据数量
 	Size() int
+
+	Close() error
 }
 
-func NewIndexer(tp model.IndexType) Indexer {
+func NewIndexer(tp model.IndexType, dirPath string) Indexer {
 	switch tp {
 	case model.Btree:
 		// 使用该方式则使用默认节点数
 		return NewBTree(constant.DefaultDegree)
 	case model.ART:
 		return NewRadixTree()
+	case model.BPlusTree:
+		return NewBPlusTree(dirPath)
+
 	default:
 		return nil
 	}

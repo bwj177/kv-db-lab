@@ -15,6 +15,8 @@ const (
 
 	ART
 
+	BPlusTree
+
 	// ................
 
 )

@@ -8,6 +8,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/stretchr/testify v1.8.1
+	go.etcd.io/bbolt v1.3.8
 
 )
 

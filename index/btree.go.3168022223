@@ -56,7 +56,7 @@ func (B *BTree) Size() int {
 	return B.tree.Len()
 }
 
-func (B *BTree) Close() error {
+func (B *BTree)Close() error {
 	return nil
 }
 

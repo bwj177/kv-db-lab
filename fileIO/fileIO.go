@@ -1,6 +1,9 @@
 package fileIO
 
-import "os"
+import (
+	"kv-db-lab/constant"
+	"os"
+)
 
 type fileIO struct {
 	fd *os.File
@@ -45,7 +48,7 @@ func (f fileIO) Size() (int64, error) {
 	return stat.Size(), nil
 }
 func NewFileIO(fileName string) (*fileIO, error) {
-	fd, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	fd, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, constant.DefaultFileMode)
 	if err != nil {
 		return nil, err
 	}

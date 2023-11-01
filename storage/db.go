@@ -11,6 +11,7 @@ import (
 	"kv-db-lab/pkg"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,10 @@ type Engine struct {
 	transID uint64 // 全局事务ID
 
 	isMerging bool // 标识当前引擎是否正在进行merge数据
+
+	isExistTxFile bool //标识是否存在存储事务ID的文件，如果没有则不允许使用批写入
+
+	isInitial bool // 标识是否是第一次初始化数据目录
 }
 
 // Put
@@ -458,8 +463,10 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 		return nil, err
 	}
 
+	var isInitial bool
 	// 判断数据目录是否存在，如果不存在则创建这个目录
 	if _, err := os.Stat(options.DirPath); os.IsNotExist(err) {
+		isInitial = true
 		// 不存在，自行创建目录
 		if err := os.Mkdir(options.DirPath, os.ModePerm); err != nil {
 			return nil, err
@@ -468,10 +475,11 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 
 	// 初始化engine结构体
 	db := &Engine{
-		option:  options,
-		lock:    &sync.RWMutex{},
-		oldFile: make(map[uint]*model.DataFile),
-		index:   index.NewIndexer(options.Index),
+		option:    options,
+		lock:      &sync.RWMutex{},
+		oldFile:   make(map[uint]*model.DataFile),
+		index:     index.NewIndexer(options.Index, options.DirPath),
+		isInitial: isInitial,
 	}
 
 	// 加载数据目录
@@ -485,14 +493,32 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 		return nil, err
 	}
 
-	// 从hint索引文件加载索引
-	if err := db.loadIndexFromHintFile(); err != nil {
-		return nil, err
+	// B+树索引由于将索引信息持久化，不需要再加载索引文件
+	if db.option.Index != model.BPlusTree {
+		// 从hint索引文件加载索引
+		if err := db.loadIndexFromHintFile(); err != nil {
+			return nil, err
+		}
+
+		// 从数据文件中加载索引
+		if err := db.loadIndexFromDateFiles(); err != nil {
+			return nil, err
+		}
+
 	}
 
-	// 从数据文件中加载索引
-	if err := db.loadIndexFromDateFiles(); err != nil {
-		return nil, err
+	// 如果是Btree索引，则从文件中取出当前事务序列号，以及活跃文件的writeOffset ，因为不能加载索引时获取
+	if options.Index == model.BPlusTree {
+		if err := db.GetTxID(); err != nil {
+			return nil, err
+		}
+		if db.activeFile != nil {
+			size, err := db.activeFile.IOManager.Size()
+			if err != nil {
+				return nil, err
+			}
+			db.activeFile.FilePos.Offset = size
+		}
 	}
 
 	return db, nil
@@ -510,6 +536,11 @@ func (db *Engine) NewIterate(opts *model.IteratorOptions) *Iterate {
 }
 
 func (db *Engine) NewWriteBatch(opts *model.WriteBatchOptions) *WriteBatch {
+	// 如果索引类型是b+树且无最新的事务ID文件则不允许使用批写入
+	if db.option.Index == model.BPlusTree && !db.isExistTxFile && !db.isInitial {
+		panic("can't use batch write'")
+	}
+
 	return &WriteBatch{
 		lock:          new(sync.RWMutex),
 		engine:        db,
@@ -567,6 +598,26 @@ func (db *Engine) Close() error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
+	// 保存当前事务序列号,因为开启引擎时b+Tree索引不会再去加载索引，无法拿到最新的ID
+	seqFile, err := model.OpenTxIDFile(db.option.DirPath)
+	if err != nil {
+		return err
+	}
+
+	record := &model.LogRecord{
+		Key:   []byte("seqNoKey"),
+		Value: []byte(strconv.FormatUint(db.transID, 10)),
+	}
+
+	encRecord, _ := model.EncodeLogRecord(record)
+	if err := seqFile.Write(encRecord); err != nil {
+		return err
+	}
+
+	if err := seqFile.Sync(); err != nil {
+		return err
+	}
+
 	// 关闭当前活跃文件
 	if err := db.activeFile.Close(); err != nil {
 		return err
@@ -579,6 +630,9 @@ func (db *Engine) Close() error {
 		}
 	}
 
+	if err := db.index.Close(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -592,4 +646,33 @@ func (db *Engine) Sync() error {
 	defer db.lock.Unlock()
 
 	return db.activeFile.Sync()
+}
+
+func (db *Engine) GetTxID() error {
+	fileName := filepath.Join(db.option.DirPath, constant.NowTxIDFileName)
+	// 如果不是B+树存储索引则不存在该文件，需要判断是否存在
+	if _, err := os.Stat(fileName); os.IsNotExist(err) {
+		return nil
+	}
+
+	// 读取ID
+	TxFile, err := model.OpenTxIDFile(fileName)
+	if err != nil {
+		return err
+	}
+
+	logRecord, _, err := TxFile.ReadLogRecordByOffset(0)
+	if err != nil {
+		return err
+	}
+	seqNo, err := strconv.ParseUint(string(logRecord.Value), 10, 64)
+	if err != nil {
+		return err
+	}
+
+	db.transID = seqNo
+	db.isExistTxFile = true
+
+	// 由于会追加写入事务ID，读出后直接删除数据
+	return os.RemoveAll(fileName)
 }

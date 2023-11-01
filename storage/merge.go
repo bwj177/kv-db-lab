@@ -199,6 +199,12 @@ func (db *Engine) loadMergeFile() error {
 		if entry.Name() == constant.MergeFinishedName {
 			isMergeFin = true
 		}
+
+		// 不需要将存储事务ID的文件迁移进行merge
+		if entry.Name() == constant.NowTxIDFileName {
+			continue
+		}
+
 		mergeFileNames = append(mergeFileNames, entry.Name())
 	}
 
