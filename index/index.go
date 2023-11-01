@@ -25,6 +25,8 @@ func NewIndexer(tp model.IndexType) Indexer {
 	case model.Btree:
 		// 使用该方式则使用默认节点数
 		return NewBTree(constant.DefaultDegree)
+	case model.ART:
+		return NewRadixTree()
 	default:
 		return nil
 	}
