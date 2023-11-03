@@ -21,6 +21,13 @@ const (
 
 )
 
+type IOType uint8
+
+const (
+	StandardFileIO IOType = iota
+	MMapFileIO
+)
+
 // IteratorOptions
 //
 //	@Description: 迭代器配置项

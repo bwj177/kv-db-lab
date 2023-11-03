@@ -13,12 +13,12 @@ type DataFile struct {
 	IOManager fileIO.IOManager // 文件IO的能力接入
 }
 
-func OpenDataFile(path string, fileId uint32) (*DataFile, error) {
+func OpenDataFile(path string, fileId uint32, fileIOType IOType) (*DataFile, error) {
 	// 组装filePath
 	fileName := filepath.Join(path, fmt.Sprintf("%09d", fileId)+constant.DataFileSuffix)
 
 	// 初始化fileIO
-	ioManager, err := fileIO.NewIOManager(fileName)
+	ioManager, err := fileIO.NewIOManager(fileName, fileIOType)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func OpenHintFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, constant.HintFileName)
 
 	// 初始化fileIO
-	ioManager, err := fileIO.NewIOManager(fileName)
+	ioManager, err := fileIO.NewIOManager(fileName, StandardFileIO)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func OpenTxIDFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, constant.NowTxIDFileName)
 
 	// 初始化fileIO
-	ioManager, err := fileIO.NewIOManager(fileName)
+	ioManager, err := fileIO.NewIOManager(fileName, StandardFileIO)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, constant.MergeFinishedName)
 
 	// 初始化fileIO
-	ioManager, err := fileIO.NewIOManager(fileName)
+	ioManager, err := fileIO.NewIOManager(fileName, StandardFileIO)
 	if err != nil {
 		return nil, err
 	}
@@ -202,5 +202,29 @@ func (df *DataFile) WriteHintRecord(key []byte, recordPos *LogRecordPos) error {
 		return err
 	}
 
+	return nil
+}
+
+// SetIOManager
+//
+//	@Description: 重新设置dateFile中文件io类型
+//	@receiver df
+//	@param dirPath
+//	@param ioType
+//	@return error
+func (df *DataFile) SetIOManager(dirPath string, ioType IOType) error {
+	// 关闭旧的ioManager
+	if err := df.IOManager.Close(); err != nil {
+		return err
+	}
+
+	// 构造新的IOManager
+	fileName := filepath.Join(dirPath, fmt.Sprintf("%09d", df.FilePos.FileID)+constant.DataFileSuffix)
+	ioManager, err := fileIO.NewIOManager(fileName, ioType)
+	if err != nil {
+		return err
+	}
+
+	df.IOManager = ioManager
 	return nil
 }

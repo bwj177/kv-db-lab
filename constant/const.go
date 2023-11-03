@@ -46,3 +46,5 @@ const MergeFinishedKey = "MERGE.FINISHED"
 const BPlusIndexName = "BPlusTree"
 
 const DefaultIndexBucketName = "default-bucket"
+
+const FileLockName = "lockFile"

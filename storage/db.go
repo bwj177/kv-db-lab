@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"errors"
+	"github.com/gofrs/flock"
 	"github.com/sirupsen/logrus"
 	"io"
 	"kv-db-lab/constant"
@@ -35,6 +36,8 @@ type Engine struct {
 	isExistTxFile bool //标识是否存在存储事务ID的文件，如果没有则不允许使用批写入
 
 	isInitial bool // 标识是否是第一次初始化数据目录
+
+	fileLock *flock.Flock
 }
 
 // Put
@@ -268,7 +271,7 @@ func (db *Engine) setActiveFile() error {
 	}
 
 	// 打开新的数据文件
-	dataFile, err := model.OpenDataFile(db.option.DirPath, initialFileId)
+	dataFile, err := model.OpenDataFile(db.option.DirPath, initialFileId, model.StandardFileIO)
 	if err != nil {
 		logrus.Info("db:open new file failed,err:", err.Error())
 		return err
@@ -307,7 +310,7 @@ func (db *Engine) loadDateFile() error {
 
 	// 打开文件并加载到引擎的数据文件中
 	for i, fileId := range fileIds {
-		dataFile, err := model.OpenDataFile(db.option.DirPath, uint32(fileId))
+		dataFile, err := model.OpenDataFile(db.option.DirPath, uint32(fileId), model.MMapFileIO)
 		if err != nil {
 			return err
 		}
@@ -457,13 +460,25 @@ func (db *Engine) updateIndex(key []byte, status constant.LogRecordStatus, pos *
 //	@return *Engine
 //	@return error
 func OpenWithOptions(options *model.Options) (*Engine, error) {
+	// 判断引擎在这个目录是否正在使用，不允许多个进程对同一目录文件读写
+	fileLock := flock.New(path.Join(options.DirPath, constant.FileLockName))
+	hold, err := fileLock.TryLock()
+	if err != nil {
+		return nil, err
+	}
+	if hold {
+		return nil, errors.New("该目录已有存储引擎正在运行")
+	}
+
 	// 校验传入的配置项
 	if err := pkg.CheckOptions(options); err != nil {
 		logrus.Error("db:open failed,err:", err.Error())
 		return nil, err
 	}
 
+	//标识是否是第一次创建此目录，或者该目录无文件
 	var isInitial bool
+
 	// 判断数据目录是否存在，如果不存在则创建这个目录
 	if _, err := os.Stat(options.DirPath); os.IsNotExist(err) {
 		isInitial = true
@@ -473,6 +488,14 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 		}
 	}
 
+	entites, err := os.ReadDir(options.DirPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(entites) == 0 {
+		isInitial = true
+	}
+
 	// 初始化engine结构体
 	db := &Engine{
 		option:    options,
@@ -480,6 +503,7 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 		oldFile:   make(map[uint]*model.DataFile),
 		index:     index.NewIndexer(options.Index, options.DirPath),
 		isInitial: isInitial,
+		fileLock:  fileLock,
 	}
 
 	// 加载数据目录
@@ -505,6 +529,11 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 			return nil, err
 		}
 
+	}
+
+	//重置IO类型为标准的io
+	if err := db.ReSetFileIO(); err != nil {
+		return nil, err
 	}
 
 	// 如果是Btree索引，则从文件中取出当前事务序列号，以及活跃文件的writeOffset ，因为不能加载索引时获取
@@ -574,7 +603,7 @@ func (db *Engine) Fold(fn func(key []byte, value []byte) bool) error {
 	//从文件中读加读锁
 	db.lock.RLock()
 	defer db.lock.RUnlock()
-
+	defer iter.Close()
 	// 使用迭代器获得pos->value
 	for iter.Rewind(); iter.Valid(); iter.Next() {
 		value, err := db.GetByRecordPos(iter.Value())
@@ -630,7 +659,13 @@ func (db *Engine) Close() error {
 		}
 	}
 
+	// 关闭索引
 	if err := db.index.Close(); err != nil {
+		return err
+	}
+
+	// 关闭文件锁
+	if err := db.fileLock.Unlock(); err != nil {
 		return err
 	}
 	return nil
@@ -675,4 +710,27 @@ func (db *Engine) GetTxID() error {
 
 	// 由于会追加写入事务ID，读出后直接删除数据
 	return os.RemoveAll(fileName)
+}
+
+// ReSetFileIO
+//
+//	@Description: 切换db中DateFile中文件IO类型
+//	@receiver db
+//	@return error
+func (db *Engine) ReSetFileIO() error {
+	if db.activeFile == nil {
+		return nil
+	}
+
+	if err := db.activeFile.SetIOManager(db.option.DirPath, model.StandardFileIO); err != nil {
+		return err
+	}
+
+	for _, oldFile := range db.oldFile {
+		if err := oldFile.SetIOManager(db.option.DirPath, model.StandardFileIO); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

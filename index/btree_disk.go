@@ -146,6 +146,8 @@ func (bpi *bptreeIterator) Value() *model.LogRecordPos {
 	return model.DecodeLogRecordPos(bpi.currValue)
 }
 
+// Close Rollback closes the transaction and ignores all previous updates. Read-only
+// transactions must be rolled back and not committed.
 func (bpi *bptreeIterator) Close() {
 	_ = bpi.tx.Rollback()
 }
