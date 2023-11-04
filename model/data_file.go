@@ -13,7 +13,7 @@ type DataFile struct {
 	IOManager fileIO.IOManager // 文件IO的能力接入
 }
 
-func OpenDataFile(path string, fileId uint32, fileIOType IOType) (*DataFile, error) {
+func OpenDataFile(path string, fileId uint32, fileIOType fileIO.IOType) (*DataFile, error) {
 	// 组装filePath
 	fileName := filepath.Join(path, fmt.Sprintf("%09d", fileId)+constant.DataFileSuffix)
 
@@ -38,7 +38,7 @@ func OpenHintFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, constant.HintFileName)
 
 	// 初始化fileIO
-	ioManager, err := fileIO.NewIOManager(fileName, StandardFileIO)
+	ioManager, err := fileIO.NewIOManager(fileName, fileIO.StandardFileIO)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func OpenTxIDFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, constant.NowTxIDFileName)
 
 	// 初始化fileIO
-	ioManager, err := fileIO.NewIOManager(fileName, StandardFileIO)
+	ioManager, err := fileIO.NewIOManager(fileName, fileIO.StandardFileIO)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 	fileName := filepath.Join(dirPath, constant.MergeFinishedName)
 
 	// 初始化fileIO
-	ioManager, err := fileIO.NewIOManager(fileName, StandardFileIO)
+	ioManager, err := fileIO.NewIOManager(fileName, fileIO.StandardFileIO)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +212,7 @@ func (df *DataFile) WriteHintRecord(key []byte, recordPos *LogRecordPos) error {
 //	@param dirPath
 //	@param ioType
 //	@return error
-func (df *DataFile) SetIOManager(dirPath string, ioType IOType) error {
+func (df *DataFile) SetIOManager(dirPath string, ioType fileIO.IOType) error {
 	// 关闭旧的ioManager
 	if err := df.IOManager.Close(); err != nil {
 		return err

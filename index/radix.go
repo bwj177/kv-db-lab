@@ -21,11 +21,15 @@ func NewRadixTree() *RadixTree {
 	}
 }
 
-func (r *RadixTree) Put(key []byte, pos *model.LogRecordPos) bool {
+// Put 更新并返回原value
+func (r *RadixTree) Put(key []byte, pos *model.LogRecordPos) *model.LogRecordPos {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	r.tree.Insert(key, pos)
-	return true
+	oldValue, isUpdate := r.tree.Insert(key, pos)
+	if !isUpdate {
+		return nil
+	}
+	return oldValue.(*model.LogRecordPos)
 }
 
 func (r *RadixTree) Get(key []byte) *model.LogRecordPos {
@@ -38,11 +42,15 @@ func (r *RadixTree) Get(key []byte) *model.LogRecordPos {
 	return pos.(*model.LogRecordPos)
 }
 
-func (r *RadixTree) Delete(key []byte) bool {
+// Delete 删除并返回删除的value
+func (r *RadixTree) Delete(key []byte) *model.LogRecordPos {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	_, deleted := r.tree.Delete(key)
-	return deleted
+	oldValue, isDeleted := r.tree.Delete(key)
+	if isDeleted {
+		return oldValue.(*model.LogRecordPos)
+	}
+	return nil
 }
 
 func (r *RadixTree) Iterator(reverse bool) Iterator {

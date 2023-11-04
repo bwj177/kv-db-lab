@@ -48,3 +48,5 @@ const BPlusIndexName = "BPlusTree"
 const DefaultIndexBucketName = "default-bucket"
 
 const FileLockName = "lockFile"
+
+const DefaultMergeRatio = 0.5

@@ -18,7 +18,7 @@ type BTree struct {
 	lock *sync.RWMutex
 }
 
-func (B *BTree) Put(key []byte, pos *model.LogRecordPos) bool {
+func (B *BTree) Put(key []byte, pos *model.LogRecordPos) *model.LogRecordPos {
 	item := Item{
 		key: key,
 		pos: pos,
@@ -27,8 +27,13 @@ func (B *BTree) Put(key []byte, pos *model.LogRecordPos) bool {
 	defer B.lock.Unlock()
 
 	// ReplaceOrInsert: 已存在时替换并返回原有值，否则返回空值
-	B.tree.ReplaceOrInsert(item)
-	return true
+	oldItem := B.tree.ReplaceOrInsert(item)
+	if oldItem == nil {
+		return nil
+	}
+
+	oldPos := oldItem.(Item).pos
+	return oldPos
 }
 
 func (B *BTree) Get(key []byte) *model.LogRecordPos {
@@ -42,14 +47,19 @@ func (B *BTree) Get(key []byte) *model.LogRecordPos {
 	return btreeItem.(Item).pos
 }
 
-func (B *BTree) Delete(key []byte) bool {
+func (B *BTree) Delete(key []byte) *model.LogRecordPos {
 	item := Item{
 		key: key,
 	}
 	B.lock.Lock()
 	defer B.lock.Unlock()
 	btreeItem := B.tree.Delete(item)
-	return btreeItem != nil
+
+	if btreeItem == nil {
+		return nil
+	}
+
+	return btreeItem.(Item).pos
 }
 
 func (B *BTree) Size() int {

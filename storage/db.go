@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"io"
 	"kv-db-lab/constant"
+	"kv-db-lab/fileIO"
 	"kv-db-lab/index"
 	"kv-db-lab/model"
 	"kv-db-lab/pkg"
@@ -37,7 +38,9 @@ type Engine struct {
 
 	isInitial bool // 标识是否是第一次初始化数据目录
 
-	fileLock *flock.Flock
+	fileLock *flock.Flock // 文件锁，一个dir下仅允许启用唯一一个存储引擎
+
+	reclaimSize int64 // 标识有多少数据无效，需要merge
 }
 
 // Put
@@ -71,9 +74,8 @@ func (db *Engine) Put(key []byte, value []byte) error {
 	}
 
 	// 更新内存索引
-	if ok := db.index.Put(key, pos); !ok {
-		logrus.Error("update index failed,err")
-		return constant.ErrUpdateIndex
+	if oldPos := db.index.Put(key, pos); oldPos != nil {
+		db.reclaimSize += oldPos.Size
 	}
 
 	return nil
@@ -219,6 +221,7 @@ func (db *Engine) appendLogRecord(logRecord *model.LogRecord) (*model.LogRecordP
 	pos := &model.LogRecordPos{
 		FileID: db.activeFile.FilePos.FileID,
 		Offset: writeOffset,
+		Size:   size,
 	}
 	return pos, nil
 }
@@ -245,15 +248,18 @@ func (db *Engine) Delete(key []byte) error {
 		Value:  nil,
 		Status: constant.LogRecordDelete,
 	}
-	_, err := db.appendLogRecord(logRecord)
+	Pos, err := db.appendLogRecord(logRecord)
 	if err != nil {
 		return err
 	}
 
+	// 由于删除状态的记录不会记录在索引中，后续merge显然为无效记录，所以在此也需要标记，否则后续put同一个key并不会对这个删除状态的key进行标记
+	db.reclaimSize += Pos.Size
+
 	// 删除索引文件
-	ok := db.index.Delete(key)
-	if !ok {
-		return errors.New("删除索引失败")
+	oldPos := db.index.Delete(key)
+	if oldPos != nil {
+		db.reclaimSize += oldPos.Size
 	}
 
 	return nil
@@ -271,7 +277,7 @@ func (db *Engine) setActiveFile() error {
 	}
 
 	// 打开新的数据文件
-	dataFile, err := model.OpenDataFile(db.option.DirPath, initialFileId, model.StandardFileIO)
+	dataFile, err := model.OpenDataFile(db.option.DirPath, initialFileId, fileIO.StandardFileIO)
 	if err != nil {
 		logrus.Info("db:open new file failed,err:", err.Error())
 		return err
@@ -310,7 +316,7 @@ func (db *Engine) loadDateFile() error {
 
 	// 打开文件并加载到引擎的数据文件中
 	for i, fileId := range fileIds {
-		dataFile, err := model.OpenDataFile(db.option.DirPath, uint32(fileId), model.MMapFileIO)
+		dataFile, err := model.OpenDataFile(db.option.DirPath, uint32(fileId), fileIO.MMapFileIO)
 		if err != nil {
 			return err
 		}
@@ -381,6 +387,7 @@ func (db *Engine) loadIndexFromDateFiles() error {
 			logRecordPos := &model.LogRecordPos{
 				FileID: fid,
 				Offset: offset,
+				Size:   size,
 			}
 
 			// 解析 key拿到事务ID与realKey
@@ -440,15 +447,17 @@ func (db *Engine) loadIndexFromDateFiles() error {
 }
 
 func (db *Engine) updateIndex(key []byte, status constant.LogRecordStatus, pos *model.LogRecordPos) error {
-	var ok bool
+	var oldPos *model.LogRecordPos
 	// 如果记录为已删除状态
 	if status == constant.LogRecordDelete {
-		ok = db.index.Delete(key)
+		oldPos = db.index.Delete(key)
+		db.reclaimSize += pos.Size
 	} else {
-		ok = db.index.Put(key, pos)
+		oldPos = db.index.Put(key, pos)
 	}
-	if !ok {
-		return constant.ErrUpdateIndex
+	if oldPos != nil {
+		db.reclaimSize += oldPos.Size
+		return nil
 	}
 	return nil
 }
@@ -466,7 +475,7 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	if hold {
+	if !hold {
 		return nil, errors.New("该目录已有存储引擎正在运行")
 	}
 
@@ -683,6 +692,11 @@ func (db *Engine) Sync() error {
 	return db.activeFile.Sync()
 }
 
+// GetTxID
+//
+//	@Description: 从存储事务ID的文件读取当前事务ID
+//	@receiver db
+//	@return error
 func (db *Engine) GetTxID() error {
 	fileName := filepath.Join(db.option.DirPath, constant.NowTxIDFileName)
 	// 如果不是B+树存储索引则不存在该文件，需要判断是否存在
@@ -722,15 +736,43 @@ func (db *Engine) ReSetFileIO() error {
 		return nil
 	}
 
-	if err := db.activeFile.SetIOManager(db.option.DirPath, model.StandardFileIO); err != nil {
+	if err := db.activeFile.SetIOManager(db.option.DirPath, fileIO.StandardFileIO); err != nil {
 		return err
 	}
 
 	for _, oldFile := range db.oldFile {
-		if err := oldFile.SetIOManager(db.option.DirPath, model.StandardFileIO); err != nil {
+		if err := oldFile.SetIOManager(db.option.DirPath, fileIO.StandardFileIO); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// Stat
+//
+//	@Description: 获取引擎指标信息
+//	@receiver db
+//	@return *model.EngineStat
+func (db *Engine) Stat() *model.EngineStat {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	var dateFileNum = uint(len(db.oldFile))
+
+	if db.activeFile != nil {
+		dateFileNum += 1
+	}
+
+	diskSize, err := pkg.DirSize(db.option.DirPath)
+	if err != nil {
+		panic("获取目录文件大小错误")
+	}
+
+	return &model.EngineStat{
+		KeyNum:          uint(db.index.Size()),
+		DateFileNum:     dateFileNum,
+		ReclaimableSize: db.reclaimSize,
+		DiskSize:        diskSize,
+	}
 }

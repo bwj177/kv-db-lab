@@ -10,9 +10,9 @@ import (
 // Indexer
 // @Description: 索引存储公用接口
 type Indexer interface {
-	Put(key []byte, pos *model.LogRecordPos) bool
+	Put(key []byte, pos *model.LogRecordPos) *model.LogRecordPos
 	Get(key []byte) *model.LogRecordPos
-	Delete(key []byte) bool
+	Delete(key []byte) *model.LogRecordPos
 
 	Iterator(reverse bool) Iterator
 
@@ -31,7 +31,6 @@ func NewIndexer(tp model.IndexType, dirPath string) Indexer {
 		return NewRadixTree()
 	case model.BPlusTree:
 		return NewBPlusTree(dirPath)
-
 	default:
 		return nil
 	}

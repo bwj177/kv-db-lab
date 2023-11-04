@@ -2,7 +2,6 @@ package fileIO
 
 import (
 	"errors"
-	"kv-db-lab/model"
 )
 
 // IOManager
@@ -22,13 +21,20 @@ type IOManager interface {
 	Size() (int64, error)
 }
 
-func NewIOManager(filePath string, ioType model.IOType) (IOManager, error) {
+func NewIOManager(filePath string, ioType IOType) (IOManager, error) {
 	switch ioType {
-	case model.StandardFileIO:
+	case StandardFileIO:
 		return NewFileIO(filePath)
-	case model.MMapFileIO:
+	case MMapFileIO:
 		return NewMMapIOManager(filePath)
 	default:
 		return nil, errors.New("无效的fileIO类型")
 	}
 }
+
+type IOType uint8
+
+const (
+	StandardFileIO IOType = iota
+	MMapFileIO
+)

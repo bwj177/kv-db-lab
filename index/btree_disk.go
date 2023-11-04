@@ -30,15 +30,25 @@ func NewBPlusTree(dirPath string) *BPlusTree {
 	return &BPlusTree{tree: db}
 }
 
-func (bpt *BPlusTree) Put(key []byte, pos *model.LogRecordPos) bool {
+func (bpt *BPlusTree) Put(key []byte, pos *model.LogRecordPos) *model.LogRecordPos {
+	// put前取出旧值返回
+	var oldVal []byte
+
 	// update实际就是一个更新的事务，一并执行update、delete、put等操作，保证原子性
 	if err := bpt.tree.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(constant.DefaultIndexBucketName))
+		// 先取旧值
+		oldVal = bucket.Get(key)
 		return bucket.Put(key, model.EncodeLogRecordPos(pos))
 	}); err != nil {
 		panic("failed to put index to b+TreeIndex")
 	}
-	return true
+
+	if len(oldVal) == 0 {
+		return nil
+	}
+
+	return model.DecodeLogRecordPos(oldVal)
 }
 
 func (bpt *BPlusTree) Get(key []byte) *model.LogRecordPos {
@@ -58,15 +68,23 @@ func (bpt *BPlusTree) Get(key []byte) *model.LogRecordPos {
 	return pos
 }
 
-func (bpt *BPlusTree) Delete(key []byte) bool {
+func (bpt *BPlusTree) Delete(key []byte) *model.LogRecordPos {
+	var oldValue []byte
+
 	// update实际就是一个更新的事务，一并执行update、delete、put等操作，保证原子性
 	if err := bpt.tree.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(constant.DefaultIndexBucketName))
+		oldValue = bucket.Get(key)
 		return bucket.Delete(key)
 	}); err != nil {
 		panic("failed to delete index to b+TreeIndex")
 	}
-	return true
+
+	if len(oldValue) == 0 {
+		return nil
+	}
+
+	return model.DecodeLogRecordPos(oldValue)
 }
 
 func (bpt *BPlusTree) Size() int {

@@ -29,6 +29,18 @@ func (db *Engine) Merge() error {
 		return errors.New("engine is merging")
 	}
 
+	// 未达到设定无效数据阈值不可以merge
+	// mergeRatio : 无效数据与总key数量的比值
+	stat := db.Stat()
+
+	reclaimSize, diskSize := stat.ReclaimableSize, stat.DiskSize
+	mergeRatio := float32(reclaimSize) / float32(diskSize)
+
+	if mergeRatio < db.option.DateFileMergeRatio {
+		return errors.New("can`t frequently merge it")
+	}
+
+	// 锁定资源
 	db.isMerging = true
 	db.lock.Lock()
 	defer func() {
@@ -198,10 +210,16 @@ func (db *Engine) loadMergeFile() error {
 	for _, entry := range dirEntries {
 		if entry.Name() == constant.MergeFinishedName {
 			isMergeFin = true
+			continue
 		}
 
 		// 不需要将存储事务ID的文件迁移进行merge
 		if entry.Name() == constant.NowTxIDFileName {
+			continue
+		}
+
+		//锁文件也不需要
+		if entry.Name() == constant.FileLockName {
 			continue
 		}
 
@@ -223,7 +241,7 @@ func (db *Engine) loadMergeFile() error {
 	var fileID uint32
 	for ; fileID < nonMergeFileID; fileID++ {
 		// 按照规则拼接文件名
-		fileName := filepath.Join(mergePath, fmt.Sprintf("%09d", fileID)+constant.DataFileSuffix)
+		fileName := filepath.Join(db.option.DirPath, fmt.Sprintf("%09d", fileID)+constant.DataFileSuffix)
 
 		// 若该文件存在则删除掉
 		if _, err := os.Stat(fileName); err == nil {
@@ -273,7 +291,7 @@ func (db *Engine) loadIndexFromHintFile() error {
 	}
 
 	// 打开hint索引文件
-	hintFile, err := model.OpenHintFile(filePath)
+	hintFile, err := model.OpenHintFile(db.option.DirPath)
 	if err != nil {
 		return err
 	}

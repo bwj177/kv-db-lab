@@ -121,12 +121,12 @@ func (w *WriteBatch) Commit() error {
 	}
 
 	// 写一条标识事务已提交的数据 标识是否全部成功写入
-	finishedReocrd := &model.LogRecord{
+	finishedRecord := &model.LogRecord{
 		Key:    pkg.LogRecordKeySeq(constant.TxFinKey, transID),
 		Value:  nil,
 		Status: constant.LogRecordNormal,
 	}
-	if _, err := w.engine.appendLogRecord(finishedReocrd); err != nil {
+	if _, err := w.engine.appendLogRecord(finishedRecord); err != nil {
 		return err
 	}
 
@@ -141,11 +141,20 @@ func (w *WriteBatch) Commit() error {
 	for _, record := range w.pendingWrites {
 		key := record.Key
 		pos := logRecordPoses[string(key)]
+		var oldPos *model.LogRecordPos
+
 		if record.Status == constant.LogRecordNormal {
-			w.engine.index.Put(key, pos)
+			oldPos = w.engine.index.Put(key, pos)
 		}
 		if record.Status == constant.LogRecordDelete {
-			w.engine.index.Delete(key)
+			oldPos = w.engine.index.Delete(key)
+			// 更新无效数据大小
+			w.engine.reclaimSize += pos.Size
+		}
+
+		if oldPos != nil {
+			// 更新无效数据大小
+			w.engine.reclaimSize += oldPos.Size
 		}
 	}
 

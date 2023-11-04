@@ -1,10 +1,13 @@
 package model
 
+import "kv-db-lab/constant"
+
 type Options struct {
-	DirPath      string    // 数据库文件目录
-	DataFileSize int64     // 数据存放数据阈值
-	SyncWrites   bool      // 写入数据是否需要持久化
-	Index        IndexType //
+	DirPath            string    // 数据库文件目录
+	DataFileSize       int64     // 数据存放数据阈值
+	SyncWrites         bool      // 写入数据是否需要持久化
+	Index              IndexType // 文件IO类型，主要区分启动load时的索引类型
+	DateFileMergeRatio float32   //标识无效数据的阈值，超过阈值才允许进行merge，否则不允许，merge过于频繁影响性能
 }
 
 type IndexType = uint8
@@ -19,13 +22,6 @@ const (
 
 	// ................
 
-)
-
-type IOType uint8
-
-const (
-	StandardFileIO IOType = iota
-	MMapFileIO
 )
 
 // IteratorOptions
@@ -51,10 +47,11 @@ type WriteBatchOptions struct {
 }
 
 var DefaultOptions = &Options{
-	DirPath:      "./../test_file",
-	DataFileSize: 1024 * 1024,
-	SyncWrites:   true,
-	Index:        0,
+	DirPath:            "./../test_file",
+	DataFileSize:       1024,
+	SyncWrites:         true,
+	Index:              0,
+	DateFileMergeRatio: constant.DefaultMergeRatio,
 }
 
 var DefaultIteratorOptions = &IteratorOptions{
