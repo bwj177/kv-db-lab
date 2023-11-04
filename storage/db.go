@@ -776,3 +776,14 @@ func (db *Engine) Stat() *model.EngineStat {
 		DiskSize:        diskSize,
 	}
 }
+
+// BackUp
+//
+//	@Description: 将数据目录做拷贝，数据备份
+//	@receiver db
+//	@return error
+func (db *Engine) BackUp(destDir string) error {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+	return pkg.CopyDir(db.option.DirPath, destDir, []string{constant.FileLockName})
+}

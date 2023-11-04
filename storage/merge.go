@@ -3,10 +3,12 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"kv-db-lab/constant"
 	"kv-db-lab/model"
 	"kv-db-lab/pkg"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -34,8 +36,10 @@ func (db *Engine) Merge() error {
 	stat := db.Stat()
 
 	reclaimSize, diskSize := stat.ReclaimableSize, stat.DiskSize
+	fmt.Println(reclaimSize)
+	fmt.Println(diskSize)
 	mergeRatio := float32(reclaimSize) / float32(diskSize)
-
+	logrus.Info(reclaimSize, diskSize, mergeRatio)
 	if mergeRatio < db.option.DateFileMergeRatio {
 		return errors.New("can`t frequently merge it")
 	}
@@ -80,15 +84,15 @@ func (db *Engine) Merge() error {
 	})
 
 	mergePath := db.GetMergePath()
-	// 如果该目录已存在，则先前在此进行过merge，将该目录删除重新生成
-	if _, err := os.Stat(mergePath); err != nil {
-		if err := os.RemoveAll(mergePath); err != nil {
+	// 如果目录存在，说明发生过 merge，将其删除掉
+	if _, err := os.Stat(mergePath); err == nil {
+		log.Println("删除旧的merge文件")
+		if err := os.Remove(mergePath); err != nil {
 			return err
 		}
 	}
-
-	// 新建此目录
-	if err := os.Mkdir(mergePath, os.ModePerm); err != nil {
+	// 新建一个 merge path 的目录
+	if err := os.MkdirAll(mergePath, os.ModePerm); err != nil {
 		return err
 	}
 
