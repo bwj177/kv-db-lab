@@ -35,7 +35,7 @@ const MergeSuffix = "-merge"
 const HintFileName = "hint-index"
 
 // MergeFinishedName 用于标识merge成功文件的文件命名
-const MergeFinishedName = "merge-finished"
+const MergeFinishedName = "merge-finish"
 
 // NowTxIDFileName 标识 记录close时事务ID的文件名
 const NowTxIDFileName = "txID-Now"

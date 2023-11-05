@@ -7,7 +7,8 @@ import (
 )
 
 func TestEngine_BackUp(t *testing.T) {
-	db, _ := OpenWithOptions(model.DefaultOptions)
-	err := db.BackUp("./../backFile")
+	db, err := OpenWithOptions(model.DefaultOptions)
+	err = db.BackUp("./../backFile")
+	assert.Nil(t, err)
 	assert.Nil(t, err)
 }

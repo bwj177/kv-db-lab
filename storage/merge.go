@@ -87,8 +87,8 @@ func (db *Engine) Merge() error {
 	// 如果目录存在，说明发生过 merge，将其删除掉
 	if _, err := os.Stat(mergePath); err == nil {
 		log.Println("删除旧的merge文件")
-		if err := os.Remove(mergePath); err != nil {
-			return err
+		if err := os.RemoveAll(mergePath); err != nil {
+			return errors.New("删除merge目录失败")
 		}
 	}
 	// 新建一个 merge path 的目录
@@ -98,7 +98,7 @@ func (db *Engine) Merge() error {
 
 	// 打开一个新的临时bitcask引擎用于merge操作
 	mergeOptions := db.option
-	mergeOptions.SyncWrites = false
+	mergeOptions.SyncWrites = true
 	mergeOptions.DirPath = mergePath
 	mergeEngine, err := OpenWithOptions(mergeOptions)
 	if err != nil {
@@ -174,6 +174,11 @@ func (db *Engine) Merge() error {
 		return err
 	}
 
+	err = mergeFinishedFile.Close()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -196,8 +201,13 @@ func (db *Engine) loadMergeFile() error {
 		return nil
 	}
 
+	// 删除merge文件
 	defer func() {
-		_ = os.RemoveAll(mergePath)
+		fmt.Println(mergePath)
+		err := os.RemoveAll(mergePath)
+		if err != nil {
+			panic("remove mergeDir failed")
+		}
 	}()
 
 	// 读取目录所有文件
@@ -214,7 +224,6 @@ func (db *Engine) loadMergeFile() error {
 	for _, entry := range dirEntries {
 		if entry.Name() == constant.MergeFinishedName {
 			isMergeFin = true
-			continue
 		}
 
 		// 不需要将存储事务ID的文件迁移进行merge
@@ -264,15 +273,13 @@ func (db *Engine) loadMergeFile() error {
 			return err
 		}
 	}
+
 	return nil
 }
 
 // 拿到未进行merge的最小文件ID，也就是mergeFinFile文件中存储的record的value
 func (db *Engine) getNonMergeFileID(dirPath string) (uint32, error) {
 	mergeFinishedFile, err := model.OpenMergeFinishedFile(dirPath)
-	if err != nil {
-		return 0, err
-	}
 
 	// 文件中仅存储了merge完成的标识的数据，所以offset为0就是需要的数据
 	record, _, err := mergeFinishedFile.ReadLogRecordByOffset(0)
@@ -284,6 +291,12 @@ func (db *Engine) getNonMergeFileID(dirPath string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	err = mergeFinishedFile.Close()
+	if err != nil {
+		return 0, err
+	}
+
 	return uint32(recordFileID), err
 }
 

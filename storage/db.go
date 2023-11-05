@@ -469,15 +469,6 @@ func (db *Engine) updateIndex(key []byte, status constant.LogRecordStatus, pos *
 //	@return *Engine
 //	@return error
 func OpenWithOptions(options *model.Options) (*Engine, error) {
-	// 判断引擎在这个目录是否正在使用，不允许多个进程对同一目录文件读写
-	fileLock := flock.New(path.Join(options.DirPath, constant.FileLockName))
-	hold, err := fileLock.TryLock()
-	if err != nil {
-		return nil, err
-	}
-	if !hold {
-		return nil, errors.New("该目录已有存储引擎正在运行")
-	}
 
 	// 校验传入的配置项
 	if err := pkg.CheckOptions(options); err != nil {
@@ -497,6 +488,17 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 		}
 	}
 
+	// 判断引擎在这个目录是否正在使用，不允许多个进程对同一目录文件读写
+	fileLock := flock.New(path.Join(options.DirPath, constant.FileLockName))
+	hold, err := fileLock.TryLock()
+	if err != nil {
+		return nil, err
+	}
+	if !hold {
+		return nil, errors.New("该目录已有存储引擎正在运行")
+	}
+
+	// 看该目录是否有文件
 	entites, err := os.ReadDir(options.DirPath)
 	if err != nil {
 		return nil, err

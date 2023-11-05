@@ -90,7 +90,6 @@ func OpenMergeFinishedFile(dirPath string) (*DataFile, error) {
 		},
 		IOManager: ioManager,
 	}
-
 	return dataFile, nil
 }
 
