@@ -185,7 +185,8 @@ func (df *DataFile) Sync() error {
 }
 
 func (df *DataFile) Close() error {
-	return df.IOManager.Sync()
+	_ = df.IOManager.Sync()
+	return df.IOManager.Close()
 }
 
 // WriteHintRecord 写入索引信息到Hint文件中

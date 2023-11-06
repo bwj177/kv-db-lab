@@ -48,7 +48,7 @@ type WriteBatchOptions struct {
 
 var DefaultOptions = &Options{
 	DirPath:            "./../test_file",
-	DataFileSize:       1024,
+	DataFileSize:       1024 * 1024,
 	SyncWrites:         true,
 	Index:              0,
 	DateFileMergeRatio: constant.DefaultMergeRatio,
