@@ -8,7 +8,6 @@ import (
 	"kv-db-lab/constant"
 	"kv-db-lab/model"
 	"kv-db-lab/pkg"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -86,7 +85,6 @@ func (db *Engine) Merge() error {
 	mergePath := db.GetMergePath()
 	// 如果目录存在，说明发生过 merge，将其删除掉
 	if _, err := os.Stat(mergePath); err == nil {
-		log.Println("删除旧的merge文件")
 		if err := os.RemoveAll(mergePath); err != nil {
 			return errors.New("删除merge目录失败")
 		}
@@ -104,6 +102,7 @@ func (db *Engine) Merge() error {
 	if err != nil {
 		return err
 	}
+	defer mergeEngine.Close()
 
 	// 打开Hint文件去存储数据的索引
 	hintFile, err := model.OpenHintFile(mergePath)
@@ -197,13 +196,14 @@ func (db *Engine) loadMergeFile() error {
 	mergePath := db.GetMergePath()
 
 	// 该目录不存在则直接返回
+	logrus.Infof("mergeDir:%v", mergePath)
 	if _, err := os.Stat(mergePath); os.IsNotExist(err) {
+		logrus.Info("不存在merge文件目录")
 		return nil
 	}
 
 	// 删除merge文件
 	defer func() {
-		fmt.Println(mergePath)
 		err := os.RemoveAll(mergePath)
 		if err != nil {
 			panic("remove mergeDir failed")

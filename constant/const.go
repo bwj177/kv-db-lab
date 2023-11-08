@@ -17,15 +17,18 @@ const DefaultDirMode = 0755
 var DefaultFileSize int64 = 1024 * 1024
 
 // DefaultDegree Btree默认Degree
-var DefaultDegree int = 32
+const DefaultDegree = 32
 
-var DataFileSuffix string = ".data"
+// DataFileSuffix 数据文件后缀标识
+const DataFileSuffix = ".data"
 
 // MaxLogRecordHeaderSize size = crc + type + keySize +valueSize
 const MaxLogRecordHeaderSize int64 = 4 + 1 + binary.MaxVarintLen32 + binary.MaxVarintLen32
 
+// TxFinKey 标注事务完成的key
 var TxFinKey = []byte("finishedTx")
 
+// NoneTransactionID 非事务写入的数据标识
 const NoneTransactionID = 0
 
 // MergeSuffix 用于merge文件的命名后缀
@@ -43,10 +46,14 @@ const NowTxIDFileName = "txID-Now"
 // MergeFinishedKey 用于 命名merge成功文件标识写入的key
 const MergeFinishedKey = "MERGE.FINISHED"
 
+// BPlusIndexName BPlusTree存储索引的文件名
 const BPlusIndexName = "BPlusTree"
 
+// DefaultIndexBucketName bPlusTree的bucketName
 const DefaultIndexBucketName = "default-bucket"
 
+// FileLockName 文件锁命名
 const FileLockName = "lockFile"
 
+// DefaultMergeRatio 默认merge的阈值：无效数据大小与总数据大小比值
 const DefaultMergeRatio = 0.5
