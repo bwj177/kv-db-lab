@@ -6,6 +6,8 @@ import (
 )
 
 // =========================Hash 数据结构=============================================================
+//元数据格式key =>| type |expire |version | size
+//数据部分格式key |version |field => value
 
 // HSet hash数据结构的HSet方法适配
 // 如果filed本身存在，则返回false，不存在则返回true

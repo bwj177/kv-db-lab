@@ -3,6 +3,8 @@ package redis
 import "kv-db-lab/model"
 
 // ======================= List 数据结构 =================================================================================
+// 元数据存储格式key => type |expire |version |size |head |tail
+// 数据部分：key |version| index =>value
 
 func (rds *RedisDataStructure) LPush(key, element []byte) (uint32, error) {
 	return rds.pushInner(key, element, true)

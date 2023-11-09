@@ -37,7 +37,7 @@ func TestRedisDataStructure_Del_Type(t *testing.T) {
 	assert.Nil(t, err)
 
 	// del
-	_, err = rds.Del(pkg.GetTestKey(11))
+	_ = rds.Del(pkg.GetTestKey(11))
 	assert.Nil(t, err)
 
 	err = rds.Set(pkg.GetTestKey(1), pkg.RandomValue(100), 0)
@@ -48,7 +48,7 @@ func TestRedisDataStructure_Del_Type(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, String, typ)
 
-	_, err = rds.Del(pkg.GetTestKey(1))
+	err = rds.Del(pkg.GetTestKey(1))
 	assert.Nil(t, err)
 
 	_, err = rds.Get(pkg.GetTestKey(1))

@@ -28,3 +28,7 @@ func NewRedisDateStructure(db *storage.Engine) (*RedisDataStructure, error) {
 	}
 	return &RedisDataStructure{db: db}, nil
 }
+
+func (rds *RedisDataStructure) Close() error {
+	return rds.db.Close()
+}

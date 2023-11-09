@@ -87,7 +87,7 @@ func (rds *RedisDataStructure) Get(key []byte) ([]byte, error) {
 
 	// 若数据已过期
 
-	if expireTime < time.Now().UnixNano() {
+	if expireTime != 0 && expireTime < time.Now().UnixNano() {
 
 		err := rds.db.Delete(key)
 

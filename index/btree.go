@@ -104,13 +104,13 @@ func (B *BTree) Iterator(reverse bool) Iterator {
 //	@Description: 索引迭代器的实现
 type BTreeIterator struct {
 	// 当前遍历的下标位置
-	currIndex int
+	CurrIndex int
 
 	// 标识是否反序遍历
-	reverse bool
+	Reverse bool
 
 	// key位置索引信息
-	values []Item
+	Values []Item
 }
 
 func newBtreeIterator(reverse bool, tree *btree.BTree) *BTreeIterator {
@@ -131,46 +131,77 @@ func newBtreeIterator(reverse bool, tree *btree.BTree) *BTreeIterator {
 	}
 
 	return &BTreeIterator{
-		currIndex: 0,
-		reverse:   reverse,
-		values:    values,
+		CurrIndex: 0,
+		Reverse:   reverse,
+		Values:    values,
 	}
 }
 
 func (B *BTreeIterator) Rewind() {
-	B.currIndex = 0
+	B.CurrIndex = 0
 }
 
 func (B *BTreeIterator) Seek(key []byte) {
 	var start int
-	if B.reverse {
-		start = sort.Search(len(B.values), func(i int) bool {
-			return bytes.Compare(B.values[i].key, key) <= 0
+	if B.Reverse {
+		start = sort.Search(len(B.Values), func(i int) bool {
+			return bytes.Compare(B.Values[i].key, key) <= 0
 		})
 	} else {
-		start = sort.Search(len(B.values), func(i int) bool {
-			return bytes.Compare(B.values[i].key, key) > 0
+		start = sort.Search(len(B.Values), func(i int) bool {
+			return bytes.Compare(B.Values[i].key, key) > 0
 		})
 	}
-	B.currIndex = start
+	B.CurrIndex = start
 }
 
 func (B *BTreeIterator) Next() {
-	B.currIndex += 1
+	B.CurrIndex += 1
 }
 
 func (B *BTreeIterator) Valid() bool {
-	return B.currIndex < len(B.values)
+	return B.CurrIndex < len(B.Values)
 }
 
 func (B *BTreeIterator) Key() []byte {
-	return B.values[B.currIndex].key
+	return B.Values[B.CurrIndex].key
 }
 
 func (B *BTreeIterator) Value() *model.LogRecordPos {
-	return B.values[B.currIndex].pos
+	return B.Values[B.CurrIndex].pos
 }
 
 func (B *BTreeIterator) Close() {
-	B.values = nil
+	B.Values = nil
+}
+
+// ==================Zset Iterator =================
+
+func NewZSetIterator(tree *btree.BTree, suffix []byte, zsetKey []byte) *BTreeIterator {
+	idx := 0
+	values := make([]Item, tree.Len())
+
+	saveValueFn := func(item btree.Item) bool {
+		key := item.(Item).key
+		// 查看key是否符合前缀,zsetKey+version
+		if string(key[:len(zsetKey)+8]) == string(suffix) {
+			// 查看是否为存有score的数据部分,如果有则该key为需要的部分
+			if item.(Item).pos == nil {
+
+			}
+		}
+
+		values[idx] = item.(Item)
+		idx += 1
+		return true
+	}
+
+	//在迭代时将数据存入values中,倒叙插入方便实现ZPopmax
+	tree.Descend(saveValueFn)
+
+	return &BTreeIterator{
+		CurrIndex: 0,
+		Reverse:   true,
+		Values:    values,
+	}
 }

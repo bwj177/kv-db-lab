@@ -6,6 +6,8 @@ import (
 )
 
 // ======================= Set 数据结构 =================================================================
+// 元数据格式同其他数据类型
+// 数据部分格式key | version | member => NULL
 
 func (rds *RedisDataStructure) SAdd(key, member []byte) (bool, error) {
 	// 查找元数据
