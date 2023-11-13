@@ -1,8 +1,22 @@
 # 学习kv数据库从0到1的搭建与实现
 
+# bitcask基本思路：
+![img_2.png](img_2.png)
+
+![img_1.png](img_1.png)
 
 
 
+# 类图逻辑：
+## dataFile相关
+![img_4.png](img_4.png)
+
+
+
+
+
+
+---
 
 ## 知识空缺查漏：
 ps:在此项目常使用varint编码将数字压缩存入byte数组中 n int--->x []byte

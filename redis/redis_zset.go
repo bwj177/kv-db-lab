@@ -19,7 +19,7 @@ func (rds *RedisDataStructure) ZAdd(key []byte, score float64, member []byte) (b
 	}
 
 	// 构造数据部分的key
-	zk := &zsetInternalKey{
+	zk := &ZsetInternalKey{
 		key:     key,
 		version: meta.version,
 		score:   score,
@@ -48,7 +48,7 @@ func (rds *RedisDataStructure) ZAdd(key []byte, score float64, member []byte) (b
 		_ = wb.Put(key, meta.encode())
 	}
 	if exist {
-		oldKey := &zsetInternalKey{
+		oldKey := &ZsetInternalKey{
 			key:     key,
 			version: meta.version,
 			member:  member,
@@ -75,7 +75,7 @@ func (rds *RedisDataStructure) ZScore(key []byte, member []byte) (float64, error
 	}
 
 	// 构造数据部分的key
-	zk := &zsetInternalKey{
+	zk := &ZsetInternalKey{
 		key:     key,
 		version: meta.version,
 		member:  member,
@@ -99,7 +99,7 @@ func (rds *RedisDataStructure) ZRem(key, member []byte) (bool, error) {
 	}
 
 	// 构造Zset一个数据部分的 key
-	zk := &zsetInternalKey{
+	zk := &ZsetInternalKey{
 		key:     key,
 		version: time.Now().UnixNano(),
 		member:  member,

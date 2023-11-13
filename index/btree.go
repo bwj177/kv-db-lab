@@ -177,31 +177,36 @@ func (B *BTreeIterator) Close() {
 
 // ==================Zset Iterator =================
 
-func NewZSetIterator(tree *btree.BTree, suffix []byte, zsetKey []byte) *BTreeIterator {
-	idx := 0
-	values := make([]Item, tree.Len())
-
-	saveValueFn := func(item btree.Item) bool {
-		key := item.(Item).key
-		// 查看key是否符合前缀,zsetKey+version
-		if string(key[:len(zsetKey)+8]) == string(suffix) {
-			// 查看是否为存有score的数据部分,如果有则该key为需要的部分
-			if item.(Item).pos == nil {
-
-			}
-		}
-
-		values[idx] = item.(Item)
-		idx += 1
-		return true
-	}
-
-	//在迭代时将数据存入values中,倒叙插入方便实现ZPopmax
-	tree.Descend(saveValueFn)
-
-	return &BTreeIterator{
-		CurrIndex: 0,
-		Reverse:   true,
-		Values:    values,
-	}
-}
+//func NewZSetIterator(tree *btree.BTree, suffix []byte, zsetKey []byte) *BTreeIterator {
+//	idx := 0
+//	values := make([]Item, tree.Len())
+//
+//	saveValueFn := func(item btree.Item) bool {
+//		enckey := item.(Item).key
+//		// 对encKey进行编码，取出对应字段的值
+//		zsetInternalKey := redis.DecodeZsetWithScore(enckey, zsetKey)
+//
+//		// 判断是否为key+version的前缀
+//		if item.(Item).pos==nil && zsetInternalKey
+//		if string(key[:len(zsetKey)+8]) == string(suffix) {
+//			// 查看是否为存有score的数据部分,如果有则该key为需要的部分
+//			if item.(Item).pos == nil {
+//				// 取出enckey中的score和key
+//				binary.LittleEndian.Uint32(buf[:4])
+//			}
+//		}
+//
+//		values[idx] = item.(Item)
+//		idx += 1
+//		return true
+//	}
+//
+//	//在迭代时将数据存入values中,倒叙插入方便实现ZPopmax
+//	tree.Descend(saveValueFn)
+//
+//	return &BTreeIterator{
+//		CurrIndex: 0,
+//		Reverse:   true,
+//		Values:    values,
+//	}
+//}

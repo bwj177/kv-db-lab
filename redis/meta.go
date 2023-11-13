@@ -203,14 +203,14 @@ func (lk *listInternalKey) encode() []byte {
 	return buf
 }
 
-type zsetInternalKey struct {
+type ZsetInternalKey struct {
 	key     []byte
 	version int64
 	member  []byte
 	score   float64
 }
 
-func (zk *zsetInternalKey) encodeWithMember() []byte {
+func (zk *ZsetInternalKey) encodeWithMember() []byte {
 	buf := make([]byte, len(zk.key)+len(zk.member)+8)
 
 	// key
@@ -228,7 +228,7 @@ func (zk *zsetInternalKey) encodeWithMember() []byte {
 	return buf
 }
 
-func (zk *zsetInternalKey) encodeWithScore() []byte {
+func (zk *ZsetInternalKey) encodeWithScore() []byte {
 	scoreBuf := pkg.Float64ToBytes(zk.score)
 	buf := make([]byte, len(zk.key)+len(zk.member)+len(scoreBuf)+8+4)
 
@@ -253,4 +253,34 @@ func (zk *zsetInternalKey) encodeWithScore() []byte {
 	binary.LittleEndian.PutUint32(buf[index:], uint32(len(zk.member)))
 
 	return buf
+}
+
+// DecodeZsetWithScore (key)key |version | score | member |member size =>(value)NULL
+func DecodeZsetWithScore(encKey []byte, zsetKey []byte) *ZsetInternalKey {
+	//从version开始解码
+	index := len(zsetKey)
+	// 需要长度从右到左编码
+	L := len(encKey)
+
+	version := binary.LittleEndian.Uint64(encKey[index : index+8])
+	index += 8
+
+	rightIndex := L
+	// memberSize
+	memberSize := binary.LittleEndian.Uint32(encKey[rightIndex-4 : rightIndex])
+	rightIndex -= 4
+
+	// member
+	member := encKey[rightIndex-int(memberSize) : rightIndex]
+	rightIndex -= int(memberSize)
+
+	// score
+	score := encKey[index:rightIndex]
+
+	return &ZsetInternalKey{
+		key:     zsetKey,
+		version: int64(version),
+		member:  member,
+		score:   pkg.FloatFromBytes(score),
+	}
 }
