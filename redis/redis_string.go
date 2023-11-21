@@ -40,7 +40,13 @@ func (rds *RedisDataStructure) Set(key []byte, value []byte, ttl time.Duration) 
 	if ttl != 0 {
 
 		expireTime = time.Now().Add(ttl).UnixNano()
-
+		// 过期事件添入timeWheel
+		rds.db.TimeWheel.AddTask("expire key:"+string(key), func() {
+			err := rds.db.Delete(key)
+			if err != nil {
+				panic("delete key failed,key:" + string(key))
+			}
+		}, time.Now().Add(ttl))
 	}
 
 	index += binary.PutVarint(buf[index:], expireTime)

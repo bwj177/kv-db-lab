@@ -26,6 +26,7 @@ func (r *RadixTree) Put(key []byte, pos *model.LogRecordPos) *model.LogRecordPos
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	oldValue, isUpdate := r.tree.Insert(key, pos)
+
 	if !isUpdate {
 		return nil
 	}

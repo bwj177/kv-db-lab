@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/gofrs/flock"
 	"github.com/sirupsen/logrus"
+	"github.com/xiaoxuxiansheng/timewheel"
 	"io"
 	"kv-db-lab/constant"
 	"kv-db-lab/fileIO"
@@ -41,6 +42,8 @@ type Engine struct {
 	fileLock *flock.Flock // 文件锁，一个dir下仅允许启用唯一一个存储引擎
 
 	reclaimSize int64 // 标识有多少数据无效，需要merge
+
+	TimeWheel *timewheel.TimeWheel // 时间轮，用于对过期数据进行定时删除
 }
 
 // Put
@@ -560,6 +563,8 @@ func OpenWithOptions(options *model.Options) (*Engine, error) {
 			db.activeFile.FilePos.Offset = size
 		}
 	}
+	// 初始化时间轮中间件
+	db.TimeWheel = pkg.InitTimeWheel()
 
 	return db, nil
 }
